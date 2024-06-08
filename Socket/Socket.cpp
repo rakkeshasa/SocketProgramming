@@ -37,22 +37,16 @@ int main()
 
     clntAdrSize = sizeof(clntAdr);
 
-    for (i = 0; i < 5; i++)
-    {
-        hClntSock = accept(hServSock, (SOCKADDR*)&clntAdr, &clntAdrSize);
-        if (hClntSock == -1)
-            ErrorHandling("accept() error");
-        else
-            printf("Connect client %d \n", i + 1);
+    hClntSock = accept(hServSock, (SOCKADDR*)&clntAdr, &clntAdrSize);
+    if (hClntSock == -1)
+        ErrorHandling("accept() error");
+    else
+        printf("Connect client \n");
 
-        while ((strLen = recv(hClntSock, message, BUF_SIZE, 0)) != 0)
-        {
-            send(hClntSock, message, strLen, 0);
-        }
-            
+    while ((strLen = recv(hClntSock, message, BUF_SIZE - 1, 0)) != 0)
+        send(hClntSock, message, strLen, 0);
 
-        closesocket(hClntSock);
-    }
+    closesocket(hClntSock);
     closesocket(hServSock);
     WSACleanup();
     return 0;
