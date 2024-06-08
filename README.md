@@ -60,24 +60,20 @@ listen()의 2번째 인자인 5는 연결요청 대기 큐의 크기입니다.</
 
 2) 서버측에서 데이터 송수신하기
 ```
-for (i = 0; i < 5; i++)
-{
-    hClntSock = accept(hServSock, (SOCKADDR*)&clntAdr, &clntAdrSize);
-    if (hClntSock == -1)
-        ErrorHandling("accept() error");
-    else
-        printf("Connect client %d \n", i + 1);
+hClntSock = accept(hServSock, (SOCKADDR*)&clntAdr, &clntAdrSize);
+if (hClntSock == -1)
+    ErrorHandling("accept() error");
+else
+    printf("Connect client\n");
 
-    while ((strLen = recv(hClntSock, message, BUF_SIZE, 0)) != 0)
-    {
-        send(hClntSock, message, strLen, 0);
-    }
+while ((strLen = recv(hClntSock, message, BUF_SIZE, 0)) != 0)
+    send(hClntSock, message, strLen, 0);
         
-
-    closesocket(hClntSock);
-}
+closesocket(hClntSock);
 closesocket(hServSock);
 WSACleanup();
 ```
 <strong>accept()</strong>은 연결요청 대기 큐에서 대기중인 클라이언트의 연결요청을 수락하는 역할을 합니다.</BR>
 따라서 호출성공 시 내무적으로 데이터 입출력에 사용할 서버용 클라이언트 소켓을 자동으로 생성하고 연결요청 한 클라이언트의 소켓에 연결이 이루어집니다.</BR></BR>
+
+while문을 통해 서버가 클라이언트에게 받은 데이터를 그대로 클라이언트에게 보내 에코서버를 구현했습니다.</BR></BR>
