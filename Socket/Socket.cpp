@@ -11,19 +11,19 @@ int main()
 {
     WSADATA wsaData;
     SOCKET hServSock, hClntSock;
-    char message[BUF_SIZE];
-    int strLen, i;
+    TIMEVAL timeout;
+    fd_set reads, cpyReads;
+
+    int adrSz;
+    char buf[BUF_SIZE];
+    int strLen, fdNum, i;
 
     SOCKADDR_IN servAdr, clntAdr;
-    int clntAdrSize;
 
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
         ErrorHandling("WSAStartup() error!");
 
     hServSock = socket(PF_INET, SOCK_STREAM, 0);
-    if (hServSock == INVALID_SOCKET)
-        ErrorHandling("socket() error");
-
     memset(&servAdr, 0, sizeof(servAdr));
     servAdr.sin_family = AF_INET;
     servAdr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -35,18 +35,49 @@ int main()
     if (listen(hServSock, 5) == SOCKET_ERROR)
         ErrorHandling("listen() error");
 
-    clntAdrSize = sizeof(clntAdr);
+    FD_ZERO(&reads);
+    FD_SET(hServSock, &reads);
 
-    hClntSock = accept(hServSock, (SOCKADDR*)&clntAdr, &clntAdrSize);
-    if (hClntSock == -1)
-        ErrorHandling("accept() error");
-    else
-        printf("Connect client \n");
+    while (true)
+    {
+        cpyReads = reads;
+        timeout.tv_sec = 5;
+        timeout.tv_usec = 5000;
 
-    while ((strLen = recv(hClntSock, message, BUF_SIZE - 1, 0)) != 0)
-        send(hClntSock, message, strLen, 0);
+        if ((fdNum = select(0, &cpyReads, 0, 0, &timeout)) == SOCKET_ERROR)
+            break;
 
-    closesocket(hClntSock);
+        if (fdNum == 0)
+            continue;
+
+        for (i = 0; i < reads.fd_count; i++)
+        {
+            if (FD_ISSET(reads.fd_array[i], &cpyReads))
+            {
+                if (reads.fd_array[i] == hServSock)
+                {
+                    adrSz = sizeof(clntAdr);
+                    hClntSock = accept(hServSock, (SOCKADDR*)&clntAdr, &adrSz);
+                    FD_SET(hClntSock, &reads);
+                    printf("connected client: %d\n", hClntSock);
+                }
+                else
+                {
+                    strLen = recv(reads.fd_array[i], buf, BUF_SIZE - 1, 0);
+                    if (strLen == 0)
+                    {
+                        FD_CLR(reads.fd_array[i], &reads);
+                        closesocket(cpyReads.fd_array[i]);
+                        printf("close client: %d\n", cpyReads.fd_array[i]);
+                    }
+                    else
+                    {
+                        send(reads.fd_array[i], buf, strLen, 0);
+                    }
+                }
+            }
+        }
+    }
     closesocket(hServSock);
     WSACleanup();
     return 0;
