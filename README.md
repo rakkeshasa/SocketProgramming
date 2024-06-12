@@ -210,5 +210,9 @@ if (reads.fd_array[i] == hServSock)를 통해 상태변화가 일어난 파일 �
 EOF가 아니라면 받은 내용을 다시 클라이언트에게 보내 에코 서비스를 제공합니다.</br></br>
 
 ### 시현 영상
-![ScreenRec_2024-06-1118-12-36-ezgif com-video-to-gif-converter](https://github.com/rakkeshasa/SocketProgramming/assets/77041622/8f15ecd7-07b7-4283-981f-bc477d6c4e57)
+
+
+https://github.com/rakkeshasa/SocketProgramming/assets/77041622/70300319-fdd5-4896-96a0-7b19530dea0e
+
+
 
