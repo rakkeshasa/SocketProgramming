@@ -3,50 +3,48 @@
 #include <stdlib.h>
 #include <string.h>
 
-
-#define BUF_SIZE 1024
+#define BUF_SIZE 30
 void ErrorHandling(const char* message);
 
 int main()
 {
 	WSADATA wsaData;
-	SOCKET hSocket;
-	char message[BUF_SIZE];
+	SOCKET hRecvSock;
+	SOCKADDR_IN adr;
+	struct ip_mreq joinAdr;
+	char buf[BUF_SIZE];
 	int strLen;
-	SOCKADDR_IN servAdr;
 
 	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
 		ErrorHandling("WSAStartup() error!");
 
-	hSocket = socket(PF_INET, SOCK_STREAM, 0);
-	if (hSocket == INVALID_SOCKET)
-		ErrorHandling("socket() error");
+	hRecvSock = socket(PF_INET, SOCK_DGRAM, 0);
 
-	memset(&servAdr, 0, sizeof(servAdr));
-	servAdr.sin_family = AF_INET;
-	inet_pton(AF_INET, "127.0.0.1", &servAdr.sin_addr);
-	servAdr.sin_port = htons(7777);
+	memset(&adr, 0, sizeof(adr));
+	adr.sin_family = AF_INET;
+	adr.sin_addr.s_addr = htonl(INADDR_ANY);
+	adr.sin_port = htons(7777);
 
-	if (connect(hSocket, (SOCKADDR*)&servAdr, sizeof(servAdr)) == SOCKET_ERROR)
-		ErrorHandling("connect() error!");
-	else
-		puts("Connected...........");
+	if (bind(hRecvSock, (SOCKADDR*)&adr, sizeof(adr)) == SOCKET_ERROR)
+		ErrorHandling("bind() error");
+
+	inet_pton(AF_INET, "224.1.1.2", &joinAdr.imr_multiaddr.s_addr);
+	joinAdr.imr_interface.s_addr = htonl(INADDR_ANY);
+
+	if (setsockopt(hRecvSock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const char*)&joinAdr, sizeof(joinAdr)) == SOCKET_ERROR)
+		ErrorHandling("setsock() error");
 
 	while (1)
 	{
-		fputs("Input message(Q to quit): ", stdout);
-		fgets(message, BUF_SIZE, stdin);
-
-		if (!strcmp(message, "q\n") || !strcmp(message, "Q\n"))
+		strLen = recvfrom(hRecvSock, buf, BUF_SIZE - 1, 0, NULL, 0);
+		if (strLen < 0)
 			break;
 
-		send(hSocket, message, strlen(message), 0);
-		strLen = recv(hSocket, message, BUF_SIZE - 1, 0);
-		message[strLen] = 0;
-		printf("Message from server: %s", message);
+		buf[strLen] = 0;
+		fputs(buf, stdout);
 	}
 
-	closesocket(hSocket);
+	closesocket(hRecvSock);
 	WSACleanup();
 	return 0;
 }

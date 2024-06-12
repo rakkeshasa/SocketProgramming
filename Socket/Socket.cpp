@@ -4,81 +4,39 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define BUF_SIZE 1024
+#define BUF_SIZE 30
+#define TTL 64
 void ErrorHandling(const char *message);
 
 int main()
 {
     WSADATA wsaData;
-    SOCKET hServSock, hClntSock;
-    TIMEVAL timeout;
-    fd_set reads, cpyReads;
-
-    int adrSz;
+    SOCKET hSendSock;
+    SOCKADDR_IN mulAdr;
+    int timeLive = TTL;
+    FILE* fp;
     char buf[BUF_SIZE];
-    int strLen, fdNum, i;
-
-    SOCKADDR_IN servAdr, clntAdr;
 
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
         ErrorHandling("WSAStartup() error!");
 
-    hServSock = socket(PF_INET, SOCK_STREAM, 0);
-    memset(&servAdr, 0, sizeof(servAdr));
-    servAdr.sin_family = AF_INET;
-    servAdr.sin_addr.s_addr = htonl(INADDR_ANY);
-    servAdr.sin_port = htons(7777);
+    hSendSock = socket(PF_INET, SOCK_DGRAM, 0);
+    memset(&mulAdr, 0, sizeof(mulAdr));
+    mulAdr.sin_family = AF_INET;
+    inet_pton(AF_INET, "224.1.1.2", &mulAdr.sin_addr.s_addr);
+    mulAdr.sin_port = htons(7777);
 
-    if (bind(hServSock, (SOCKADDR*)&servAdr, sizeof(servAdr)) == SOCKET_ERROR)
-        ErrorHandling("bind() error");
+    setsockopt(hSendSock, IPPROTO_IP, IP_MULTICAST_TTL, (const char*)&timeLive, sizeof(timeLive));
+    if ((fp = fopen("news.txt", "r")) == NULL)
+        ErrorHandling("fopen() error");
 
-    if (listen(hServSock, 5) == SOCKET_ERROR)
-        ErrorHandling("listen() error");
-
-    FD_ZERO(&reads);
-    FD_SET(hServSock, &reads);
-
-    while (true)
+    while (!feof(fp))
     {
-        cpyReads = reads;
-        timeout.tv_sec = 5;
-        timeout.tv_usec = 5000;
-
-        if ((fdNum = select(0, &cpyReads, 0, 0, &timeout)) == SOCKET_ERROR)
-            break;
-
-        if (fdNum == 0)
-            continue;
-
-        for (i = 0; i < reads.fd_count; i++)
-        {
-            if (FD_ISSET(reads.fd_array[i], &cpyReads))
-            {
-                if (reads.fd_array[i] == hServSock)
-                {
-                    adrSz = sizeof(clntAdr);
-                    hClntSock = accept(hServSock, (SOCKADDR*)&clntAdr, &adrSz);
-                    FD_SET(hClntSock, &reads);
-                    printf("connected client: %d\n", hClntSock);
-                }
-                else
-                {
-                    strLen = recv(reads.fd_array[i], buf, BUF_SIZE - 1, 0);
-                    if (strLen == 0)
-                    {
-                        FD_CLR(reads.fd_array[i], &reads);
-                        closesocket(cpyReads.fd_array[i]);
-                        printf("close client: %d\n", cpyReads.fd_array[i]);
-                    }
-                    else
-                    {
-                        send(reads.fd_array[i], buf, strLen, 0);
-                    }
-                }
-            }
-        }
+        fgets(buf, BUF_SIZE, fp);
+        sendto(hSendSock, buf, strlen(buf), 0, (SOCKADDR*)&mulAdr, sizeof(mulAdr));
+        Sleep(2000);
     }
-    closesocket(hServSock);
+    closesocket(hSendSock);
     WSACleanup();
     return 0;
 }
