@@ -17,7 +17,7 @@
 데이터 저장방식이 다른 CPU에서 데이터를 주고 받을 시 보낸 데이터가 역순으로 저장될 수 있어 네트워크 바이트 순서는 빅 엔디안으로 통일한다.</BR>
 
 ## TCP 방식의 에코서버 구현
-1) 서버 구현
+<strong>1. 서버 구현</strong>
 ```
 if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
     ErrorHandling("WSAStartup() error!");
@@ -58,7 +58,7 @@ IPv4 인터넷 프로토콜과 연결지향형 데이터 전송을 만족하는 
 클라이언트가 서버에게 connect를 요청하면 서버에서 클라이언트용 소켓을 생성하기 전까지 연결요청 대기 큐에서 잠시 대기시킵니다.</BR>
 listen()의 2번째 인자인 5는 연결요청 대기 큐의 크기입니다.</BR></BR>
 
-2) 서버측에서 데이터 송수신하기
+<strong>2. 서버측에서 데이터 송수신하기</strong>
 ```
 hClntSock = accept(hServSock, (SOCKADDR*)&clntAdr, &clntAdrSize);
 if (hClntSock == -1)
@@ -79,6 +79,34 @@ WSACleanup();
 여기서 구현한 accept()은 클라이언트의 연결요청이 있을 때까지 함수를 반환하지 않으므로 연결요청이 오기 전까지 기다리므로 블로킹함수입니다.</BR></BR>
 
 while문을 통해 서버가 클라이언트에게 받은 데이터를 그대로 클라이언트에게 보내 에코서버를 구현했습니다.</BR></BR>
+
+<strong>3. 클라이언트 구현하기</strong>
+```
+if (connect(hSocket, (SOCKADDR*)&servAdr, sizeof(servAdr)) == SOCKET_ERROR)
+    ErrorHandling("connect() error!");
+else
+    puts("Connected...........");
+
+while (1)
+{
+    fputs("Input message(Q to quit): ", stdout);
+    fgets(message, BUF_SIZE, stdin);
+
+    if (!strcmp(message, "q\n") || !strcmp(message, "Q\n"))
+        break;
+
+    send(hSocket, message, strlen(message), 0);
+    strLen = recv(hSocket, message, BUF_SIZE - 1, 0);
+    message[strLen] = 0;
+    printf("Message from server: %s", message);
+}
+
+closesocket(hSocket);
+WSACleanup();
+```
+서버와 같이 소켓을 생성하고 <strong>connect함수</strong>를 통해 서버에 연결요청을 합니다.</br>
+서버에서 accept을 했다면 while문 내의 코드들을 동작하게 되고, q나 Q를 입력하면 while문을 종료합니다.</br>
+<strong>send()</strong>를 통하여 서버에게 데이터를 보내고 <strong>recv()</strong>를 통해 서버가 보낸 데이터를 받습니다.</br></br>
 
 ## 멀티플렉싱 서버
 멀티플렉싱 서버는 프로세스나 스레드를 여러개 생성하지 않고, <strong>단 하나의 서버 프로세스</strong>로 여러 클라이언트 소켓들의 요청을 처리하는 서버입니다.</BR></BR>
