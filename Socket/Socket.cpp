@@ -23,10 +23,10 @@ int main()
     hSendSock = socket(PF_INET, SOCK_DGRAM, 0);
     memset(&mulAdr, 0, sizeof(mulAdr));
     mulAdr.sin_family = AF_INET;
-    inet_pton(AF_INET, "224.1.1.2", &mulAdr.sin_addr.s_addr);
+    inet_pton(AF_INET, "255.255.255.255", &mulAdr.sin_addr.s_addr);
     mulAdr.sin_port = htons(7777);
 
-    setsockopt(hSendSock, IPPROTO_IP, IP_MULTICAST_TTL, (const char*)&timeLive, sizeof(timeLive));
+    setsockopt(hSendSock, SOL_SOCKET, SO_BROADCAST, (const char*)&timeLive, sizeof(timeLive));
     if ((fp = fopen("news.txt", "r")) == NULL)
         ErrorHandling("fopen() error");
 

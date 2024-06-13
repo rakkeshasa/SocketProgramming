@@ -28,12 +28,6 @@ int main()
 	if (bind(hRecvSock, (SOCKADDR*)&adr, sizeof(adr)) == SOCKET_ERROR)
 		ErrorHandling("bind() error");
 
-	inet_pton(AF_INET, "224.1.1.2", &joinAdr.imr_multiaddr.s_addr);
-	joinAdr.imr_interface.s_addr = htonl(INADDR_ANY);
-
-	if (setsockopt(hRecvSock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const char*)&joinAdr, sizeof(joinAdr)) == SOCKET_ERROR)
-		ErrorHandling("setsock() error");
-
 	while (1)
 	{
 		strLen = recvfrom(hRecvSock, buf, BUF_SIZE - 1, 0, NULL, 0);
