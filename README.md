@@ -215,7 +215,7 @@ https://github.com/rakkeshasa/SocketProgramming/assets/77041622/70300319-fdd5-48
 
 </BR>
 
-## 멀티캐스트 서버
+## 멀티캐스트
 멀티캐스트란?</BR>
 송신측에서 A.B.C.D라는 멀티캐스트 IP로 데이터를 송신한다면 수신측이 A.B.C.D에 가입하여 송신측에서 보낸 데이터를 받겠다고 한다.</BR>
 멀티캐스트 IP에 가입하면 A.B.C.D로 전송되는 데이터들이 IP에 가입된 수신측들이 전달되는 형태가 멀티캐스트이다.</BR></BR>
@@ -289,11 +289,34 @@ joinAdr.imr_interface.s_addr = htonl(INADDR_ANY);
 
 https://github.com/rakkeshasa/SocketProgramming/assets/77041622/be1673a9-64b6-4f84-aaf4-68788922b6a5
 
+</BR>
 
-
-
+## 브로드캐스트
 브로드캐스트란?</BR>
 한번에 여러 호스트에게 데이터를 전송한다는 점에서 멀티캐스트와 유사합니다.</BR>
 전송 범위에서 차이가 나는데 브로드캐스트는 동일한 네트워크로 연결되어 있는 호스트로, 데이터의 전송 대상이 제한됩니다.</BR></BR>
 
+```
+hSendSock = socket(PF_INET, SOCK_DGRAM, 0);
+memset(&mulAdr, 0, sizeof(mulAdr));
+mulAdr.sin_family = AF_INET;
+inet_pton(AF_INET, "255.255.255.255", &mulAdr.sin_addr.s_addr);
+mulAdr.sin_port = htons(7777);
+
+setsockopt(hSendSock, SOL_SOCKET, SO_BROADCAST, (const char*)&so_brd, sizeof(so_brd));
+```
+서버측 코드를 보면 멀티캐스트와 유사하나 조금 다른 부분이 있습니다.</br>
+sin_addr에 255.255.255.255를 설정해주고 있는데, 이것은 서버(데이터를 전송한 호스트)가 현재 속한 네트워크로 데이터가 전송됩니다.</br>
+예를 들면 서버측 네트워크 주소가 192.32.24라면 192.32.24로 시작하는 IP주소의 모든 호스트에게 데이터가 전달됩니다.</BR>
+브로드캐스트를 하기 위해서는 <strong>setsockopt()</strong>에서 SO_BROADCAST옵션을 1로 지정해줘야합니다.</BR>
+사용할 옵션인 SO_BROADCAST를 넣어주고, int형 변수인 so_brd에 1을 넣어 해당 옵션 값을 1로 변경하여 브로드캐스트가 되게 합니다.</br></br>
+
+### 시현 영상
+
+
+https://github.com/rakkeshasa/SocketProgramming/assets/77041622/56397c30-9186-438f-abf8-02be31f9dbf1
+
+</br>
+
+## 멀티 쓰레드 서버
 
