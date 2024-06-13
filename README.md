@@ -281,8 +281,13 @@ hRecvSock은 멀티캐스트 IP에 가입할 소켓이며, 주요하게 살펴�
 inet_pton(AF_INET, "224.1.1.2", &joinAdr.imr_multiaddr.s_addr);
 joinAdr.imr_interface.s_addr = htonl(INADDR_ANY);
 ```
-<strong>joinAdr<strong>의 imr_multiaddr에는 가입할 멀티캐스트 IP주소를 넣고, imr_interface에는 자기 자신(호스트)의 IP주소를 담습니다.</BR>
+<strong>joinAdr</strong>의 imr_multiaddr에는 가입할 멀티캐스트 IP주소를 넣고, imr_interface에는 자기 자신(호스트)의 IP주소를 담습니다.</BR>
 이후 <strong>setsockopt()</strong>을 통해 hRecvSock을 대상으로 멀티캐스트 IP그룹에 가입시킵니다.</BR>
+소켓이 등록된 멀티캐스트 IP에 서버가 데이터를 보내면 클라이언트는 해당 IP를 통해 데이터를 받아올 수 있게 됩니다.</BR>
+
+### 시현 영상
+
+https://github.com/rakkeshasa/SocketProgramming/assets/77041622/be1673a9-64b6-4f84-aaf4-68788922b6a5
 
 
 
