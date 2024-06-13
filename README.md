@@ -211,8 +211,89 @@ EOF가 아니라면 받은 내용을 다시 클라이언트에게 보내 에코 
 
 ### 시현 영상
 
-
 https://github.com/rakkeshasa/SocketProgramming/assets/77041622/70300319-fdd5-4896-96a0-7b19530dea0e
 
+</BR>
+
+## 멀티캐스트 서버
+멀티캐스트란?</BR>
+송신측에서 A.B.C.D라는 멀티캐스트 IP로 데이터를 송신한다면 수신측이 A.B.C.D에 가입하여 송신측에서 보낸 데이터를 받겠다고 한다.</BR>
+멀티캐스트 IP에 가입하면 A.B.C.D로 전송되는 데이터들이 IP에 가입된 수신측들이 전달되는 형태가 멀티캐스트이다.</BR></BR>
+
+특정 IP에 가입하여 송신되는 데이터를 받는 것이기에 따로 서버(송신)와 클라(수신)간의 연결 절차가 없으므로 UDP방식으로 송수신한다.</BR>
+일반적인 상황에서 데이터 수신측이 1000명이라면 송신측은 데이터를 총 1000번 보내줘야한다.</BR>
+멀티캐스트를 사용할 시 송신측에서 데이터를 1번만 보내면 라우터에서 데이터가 담긴 패킷을 복사해서 멀티캐스트 IP에 가입된 수신측에게 전달한다.</BR>
+따라서 송신측은 1000번이 아니라 1번만 보내도 되고, 트래픽 측면에서 이득을 취할 수 있다.</BR></BR>
+
+<strong>1. 서버 구현</strong>
+```
+ hSendSock = socket(PF_INET, SOCK_DGRAM, 0);
+ memset(&mulAdr, 0, sizeof(mulAdr));
+ mulAdr.sin_family = AF_INET;
+ inet_pton(AF_INET, "224.1.1.2", &mulAdr.sin_addr.s_addr);
+ mulAdr.sin_port = htons(7777);
+
+ setsockopt(hSendSock, IPPROTO_IP, IP_MULTICAST_TTL, (const char*)&timeLive, sizeof(timeLive));
+ if ((fp = fopen("news.txt", "r")) == NULL)
+     ErrorHandling("fopen() error");
+
+ while (!feof(fp))
+ {
+     fgets(buf, BUF_SIZE, fp);
+     sendto(hSendSock, buf, strlen(buf), 0, (SOCKADDR*)&mulAdr, sizeof(mulAdr));
+     Sleep(2000);
+ }
+```
+따로 연결과정이 없기 때문에 socket()에서 SOCK_DGRAM을 전달하여 UDP방식으로 소켓을 생성합니다.</BR>
+inet_pton(AF_INET, "224.1.1.2", &mulAdr.sin_addr.s_addr)에서 데이터를 보낼 브로드캐스트 IP주소 "224.1.1.2"를 지정해줍니다.</BR>
+setsockopt()함수는 데이터가 담긴 패킷을 얼마나 먼 라우터까지 전달할 수 있는지 TTL(Time To Live)를 세팅합니다.</br>
+이후 news.txt에 있는 내용을 hSendSock을 통해 멀티캐스트 IP주소로 보냅니다.</BR></BR>
+
+<strong>2. 클라이언트 구현</strong>
+```
+hRecvSock = socket(PF_INET, SOCK_DGRAM, 0);
+memset(&adr, 0, sizeof(adr));
+adr.sin_family = AF_INET;
+adr.sin_addr.s_addr = htonl(INADDR_ANY);
+adr.sin_port = htons(7777);
+
+if (bind(hRecvSock, (SOCKADDR*)&adr, sizeof(adr)) == SOCKET_ERROR)
+	ErrorHandling("bind() error");
+
+inet_pton(AF_INET, "224.1.1.2", &joinAdr.imr_multiaddr.s_addr);
+joinAdr.imr_interface.s_addr = htonl(INADDR_ANY);
+
+if (setsockopt(hRecvSock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const char*)&joinAdr, sizeof(joinAdr)) == SOCKET_ERROR)
+	ErrorHandling("setsock() error");
+
+while (1)
+{
+	strLen = recvfrom(hRecvSock, buf, BUF_SIZE - 1, 0, NULL, 0);
+	if (strLen < 0)
+		break;
+
+	buf[strLen] = 0;
+	fputs(buf, stdout);
+}
+```
+hRecvSock은 멀티캐스트 IP에 가입할 소켓이며, 주요하게 살펴볼 부분은 <strong>joinAdr</strong>을 세팅하는 코드부분입니다.</br>
+```
+inet_pton(AF_INET, "224.1.1.2", &joinAdr.imr_multiaddr.s_addr);
+joinAdr.imr_interface.s_addr = htonl(INADDR_ANY);
+```
+<strong>joinAdr</strong>의 imr_multiaddr에는 가입할 멀티캐스트 IP주소를 넣고, imr_interface에는 자기 자신(호스트)의 IP주소를 담습니다.</BR>
+이후 <strong>setsockopt()</strong>을 통해 hRecvSock을 대상으로 멀티캐스트 IP그룹에 가입시킵니다.</BR>
+소켓이 등록된 멀티캐스트 IP에 서버가 데이터를 보내면 클라이언트는 해당 IP를 통해 데이터를 받아올 수 있게 됩니다.</BR>
+
+### 시현 영상
+
+https://github.com/rakkeshasa/SocketProgramming/assets/77041622/be1673a9-64b6-4f84-aaf4-68788922b6a5
+
+
+
+
+브로드캐스트란?</BR>
+한번에 여러 호스트에게 데이터를 전송한다는 점에서 멀티캐스트와 유사합니다.</BR>
+전송 범위에서 차이가 나는데 브로드캐스트는 동일한 네트워크로 연결되어 있는 호스트로, 데이터의 전송 대상이 제한됩니다.</BR></BR>
 
 
