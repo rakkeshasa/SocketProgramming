@@ -21,6 +21,10 @@
 커널 오브젝트의 소유자는 커널(운영체제)이므로 커널 오브젝트의 생성, 관리, 소멸시점을 결정하는 것은 운영체제 몫이다.</br>
 C++에서 HANDLE을 볼 수 있는데, 여기서 HANDLE은 커널 오브젝트의 구분자 역할을 한다.리눅스의 파일 디스크립터에 비유된다고 볼 수 있다.</BR></BR>
 
+<strong>프로세스와 쓰레드</strong></BR>
+프로세스: 운영체제 관점에서 별도의 실행흐름을 구성하는 단위</br>
+쓰레드: 프로세스 관점에서 별도의 실행흐름을 구성하는 단위</br></br>
+
 ## TCP 방식의 에코서버 구현
 <strong>1. 서버 구현</strong>
 ```
@@ -324,4 +328,29 @@ https://github.com/rakkeshasa/SocketProgramming/assets/77041622/56397c30-9186-43
 </br>
 
 ## 멀티 쓰레드 서버
+멀티 프로세스 서버는 프로세스 생성이라는 부담스러운 작업과정과 두 프로세스 사이의 데이터 교환이 어렵다는 점이 있다.</br>
+또한 초당 수십 번에서 수천 번 일어나는 컨텍스트 스위칭으로 인해 부담이 크다.</br>
+이를 해결하기 위해 멀티 쓰레드 서버가 나왔으며 여기서 멀티 쓰레드는 <strong>스택을 제외한 메모리 영역을 공유</strong>하기 때문에 데이터 교환이 쉽다.</br>
+대신 둘 이상의 쓰레드가 공유 메모리 영역의 변수에 동시에 접근하여 수정하는 <strong>임계영역</strong> 문제가 생길 수 있다.</br>
+이를 위해 뮤텍스나 세마포어, 이벤트 처리 등으로 <strong>동기화 작업</strong>을 하여 임계영역 문제를 해결해줘야한다.</br></br>
+
+<strong>1. 서버 구현</strong>
+```
+// 서버 소켓 생성 코드 생략
+
+while (1)
+{
+    clntAdrSz = sizeof(clntAdr);
+    hClntSock = accept(hServSock, (SOCKADDR*)&clntAdr, &clntAdrSz);
+
+    WaitForSingleObject(hMutex, INFINITE);
+    clntSocks[clntCnt++] = hClntSock;
+    ReleaseMutex(hMutex);
+
+    hThread =
+        (HANDLE)_beginthreadex(NULL, 0, HandleClnt, (void*)&hClntSock, 0, NULL);
+    printf("Connected client IP: %s \n", inet_ntoa(clntAdr.sin_addr));
+}
+```
+서버 소켓 생성 후 while문에서 클라이언트의 소켓에게 connect 요청이 오면 accept을 해주고 있습니다.</br>
 
