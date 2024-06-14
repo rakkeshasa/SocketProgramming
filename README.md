@@ -14,7 +14,16 @@
 빅 엔디안은 상위 바이트의 값을 작은 번지수에 저장하는 방식으로 0x12345678을 저장하면 최상위 바이트인 0x12가 작은 번지수에 저장되고
 0x78이 큰 번지수에 저장된다.</BR>
 리틀 엔디안은 상위 바이트의 값을 큰 번지수에 저장하는 방식으로 최상위 바이트인 0x12가 큰 번지수에 저장되고 0x78이 작은 번지수에 저장된다.</BR>
-데이터 저장방식이 다른 CPU에서 데이터를 주고 받을 시 보낸 데이터가 역순으로 저장될 수 있어 네트워크 바이트 순서는 빅 엔디안으로 통일한다.</BR>
+데이터 저장방식이 다른 CPU에서 데이터를 주고 받을 시 보낸 데이터가 역순으로 저장될 수 있어 네트워크 바이트 순서는 빅 엔디안으로 통일한다.</BR></BR>
+
+<strong>커널 오브젝트</strong></BR>
+운영체제에 의해서 생성되는 리소스들(프로세스, 쓰레드, 파일 등)은 관리를 목적으로 정보를 기록하기 위해 내부적으로 데이터 블록을 생성하는데 이를 '커널 오브젝트'라고 한다.</br>
+커널 오브젝트의 소유자는 커널(운영체제)이므로 커널 오브젝트의 생성, 관리, 소멸시점을 결정하는 것은 운영체제 몫이다.</br>
+C++에서 HANDLE을 볼 수 있는데, 여기서 HANDLE은 커널 오브젝트의 구분자 역할을 한다.리눅스의 파일 디스크립터에 비유된다고 볼 수 있다.</BR></BR>
+
+<strong>프로세스와 쓰레드</strong></BR>
+프로세스: 운영체제 관점에서 별도의 실행흐름을 구성하는 단위</br>
+쓰레드: 프로세스 관점에서 별도의 실행흐름을 구성하는 단위</br></br>
 
 ## TCP 방식의 에코서버 구현
 <strong>1. 서버 구현</strong>
@@ -215,7 +224,7 @@ https://github.com/rakkeshasa/SocketProgramming/assets/77041622/70300319-fdd5-48
 
 </BR>
 
-## 멀티캐스트 서버
+## 멀티캐스트
 멀티캐스트란?</BR>
 송신측에서 A.B.C.D라는 멀티캐스트 IP로 데이터를 송신한다면 수신측이 A.B.C.D에 가입하여 송신측에서 보낸 데이터를 받겠다고 한다.</BR>
 멀티캐스트 IP에 가입하면 A.B.C.D로 전송되는 데이터들이 IP에 가입된 수신측들이 전달되는 형태가 멀티캐스트이다.</BR></BR>
@@ -289,11 +298,59 @@ joinAdr.imr_interface.s_addr = htonl(INADDR_ANY);
 
 https://github.com/rakkeshasa/SocketProgramming/assets/77041622/be1673a9-64b6-4f84-aaf4-68788922b6a5
 
+</BR>
 
-
-
+## 브로드캐스트
 브로드캐스트란?</BR>
 한번에 여러 호스트에게 데이터를 전송한다는 점에서 멀티캐스트와 유사합니다.</BR>
 전송 범위에서 차이가 나는데 브로드캐스트는 동일한 네트워크로 연결되어 있는 호스트로, 데이터의 전송 대상이 제한됩니다.</BR></BR>
 
+```
+hSendSock = socket(PF_INET, SOCK_DGRAM, 0);
+memset(&mulAdr, 0, sizeof(mulAdr));
+mulAdr.sin_family = AF_INET;
+inet_pton(AF_INET, "255.255.255.255", &mulAdr.sin_addr.s_addr);
+mulAdr.sin_port = htons(7777);
+
+setsockopt(hSendSock, SOL_SOCKET, SO_BROADCAST, (const char*)&so_brd, sizeof(so_brd));
+```
+서버측 코드를 보면 멀티캐스트와 유사하나 조금 다른 부분이 있습니다.</br>
+sin_addr에 255.255.255.255를 설정해주고 있는데, 이것은 서버(데이터를 전송한 호스트)가 현재 속한 네트워크로 데이터가 전송됩니다.</br>
+예를 들면 서버측 네트워크 주소가 192.32.24라면 192.32.24로 시작하는 IP주소의 모든 호스트에게 데이터가 전달됩니다.</BR>
+브로드캐스트를 하기 위해서는 <strong>setsockopt()</strong>에서 SO_BROADCAST옵션을 1로 지정해줘야합니다.</BR>
+사용할 옵션인 SO_BROADCAST를 넣어주고, int형 변수인 so_brd에 1을 넣어 해당 옵션 값을 1로 변경하여 브로드캐스트가 되게 합니다.</br></br>
+
+### 시현 영상
+
+
+https://github.com/rakkeshasa/SocketProgramming/assets/77041622/56397c30-9186-438f-abf8-02be31f9dbf1
+
+</br>
+
+## 멀티 쓰레드 서버
+멀티 프로세스 서버는 프로세스 생성이라는 부담스러운 작업과정과 두 프로세스 사이의 데이터 교환이 어렵다는 점이 있다.</br>
+또한 초당 수십 번에서 수천 번 일어나는 컨텍스트 스위칭으로 인해 부담이 크다.</br>
+이를 해결하기 위해 멀티 쓰레드 서버가 나왔으며 여기서 멀티 쓰레드는 <strong>스택을 제외한 메모리 영역을 공유</strong>하기 때문에 데이터 교환이 쉽다.</br>
+대신 둘 이상의 쓰레드가 공유 메모리 영역의 변수에 동시에 접근하여 수정하는 <strong>임계영역</strong> 문제가 생길 수 있다.</br>
+이를 위해 뮤텍스나 세마포어, 이벤트 처리 등으로 <strong>동기화 작업</strong>을 하여 임계영역 문제를 해결해줘야한다.</br></br>
+
+<strong>1. 서버 구현</strong>
+```
+// 서버 소켓 생성 코드 생략
+
+while (1)
+{
+    clntAdrSz = sizeof(clntAdr);
+    hClntSock = accept(hServSock, (SOCKADDR*)&clntAdr, &clntAdrSz);
+
+    WaitForSingleObject(hMutex, INFINITE);
+    clntSocks[clntCnt++] = hClntSock;
+    ReleaseMutex(hMutex);
+
+    hThread =
+        (HANDLE)_beginthreadex(NULL, 0, HandleClnt, (void*)&hClntSock, 0, NULL);
+    printf("Connected client IP: %s \n", inet_ntoa(clntAdr.sin_addr));
+}
+```
+서버 소켓 생성 후 while문에서 클라이언트의 소켓에게 connect 요청이 오면 accept을 해주고 있습니다.</br>
 
