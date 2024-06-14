@@ -330,27 +330,72 @@ https://github.com/rakkeshasa/SocketProgramming/assets/77041622/56397c30-9186-43
 ## 멀티 쓰레드 서버
 멀티 프로세스 서버는 프로세스 생성이라는 부담스러운 작업과정과 두 프로세스 사이의 데이터 교환이 어렵다는 점이 있다.</br>
 또한 초당 수십 번에서 수천 번 일어나는 컨텍스트 스위칭으로 인해 부담이 크다.</br>
-이를 해결하기 위해 멀티 쓰레드 서버가 나왔으며 여기서 멀티 쓰레드는 <strong>스택을 제외한 메모리 영역을 공유</strong>하기 때문에 데이터 교환이 쉽다.</br>
+이를 해결하기 위해 멀티 쓰레드 서버가 나왔으며 여기서 멀티 쓰레드는 <strong>스택을 제외한 메모리 영역을 공유</strong>하기 때문에 데이터 교환이 쉽습니다.</br>
 대신 둘 이상의 쓰레드가 공유 메모리 영역의 변수에 동시에 접근하여 수정하는 <strong>임계영역</strong> 문제가 생길 수 있다.</br>
-이를 위해 뮤텍스나 세마포어, 이벤트 처리 등으로 <strong>동기화 작업</strong>을 하여 임계영역 문제를 해결해줘야한다.</br></br>
+이를 위해 뮤텍스나 세마포어, 이벤트 처리 등으로 <strong>동기화 작업</strong>을 하여 임계영역 문제를 해결해줘야합니다.</br></br>
 
 <strong>1. 서버 구현</strong>
 ```
-// 서버 소켓 생성 코드 생략
+SOCKET clntSocks[MAX_CLNT];
+Mutex m;
 
-while (1)
+int main()
 {
-    clntAdrSz = sizeof(clntAdr);
-    hClntSock = accept(hServSock, (SOCKADDR*)&clntAdr, &clntAdrSz);
+    // 서버 소켓 생성 및 초기화 과정 생략
 
-    WaitForSingleObject(hMutex, INFINITE);
-    clntSocks[clntCnt++] = hClntSock;
-    ReleaseMutex(hMutex);
+    while (1)
+    {
+        clntAdrSz = sizeof(clntAdr);
+        hClntSock = accept(hServSock, (SOCKADDR*)&clntAdr, &clntAdrSz);
 
-    hThread =
-        (HANDLE)_beginthreadex(NULL, 0, HandleClnt, (void*)&hClntSock, 0, NULL);
-    printf("Connected client IP: %s \n", inet_ntoa(clntAdr.sin_addr));
+	m.lock();
+        clntSocks[clntCnt++] = hClntSock;
+	m.unlock();
+
+        thread(HandleClnt, &hClntSock).detach();
+        printf("Connected client IP: %s \n", inet_ntoa(clntAdr.sin_addr));
+    }
+    closesocket(hServSock);
+    WSACleanup();
+    return 0;
 }
 ```
-서버 소켓 생성 후 while문에서 클라이언트의 소켓에게 connect 요청이 오면 accept을 해주고 있습니다.</br>
+하나 이상의 클라이언트와 연결을 하기 위해 SOCKET형 배열을 선언해주고, 클라이언트가 connect요청을 하면 accept을 합니다.</br>
+accept후에는 clntSocks배열에 클라이언트 소켓을 넣고 동기화처리를 해줍니다.clntSocks는 전역변수로 메모리의 데이터 영역에 들어가므로 쓰레드의 공유자원이므로 동기화 처리가 필요합니다.</br></br>
 
+이후 각 클라이언트 소켓 별로 쓰레드를 생성하여 HandleClnt함수를 실행합니다. 쓰레드 생성시 detach()를 사용한 이유는 메인 쓰레드가 클라이언트 쓰레드의 종료를 기다리지 않게하기 위함입니다.</br>
+그러지 않을 시 다른 클라이언트가 연결을 하고 연결 종료를 하기 전까지 다른 클라이언트를 받지 못하여 서버가 여러 클라이언트를 동시에 처리하지 못합니다.</br>
+detach()를 하여 메인 쓰레드에 독립적인 클라이언트 쓰레드를 생성하고, 클라이언트 쓰레드는 HandleClnt함수가 끝나면 소멸됩니다.</br></br>
+
+```
+void HandleClnt(SOCKET* Sock)
+{
+    while ((strLen = recv(hClntSock, msg, sizeof(msg), 0)) != 0)
+        SendMsg(msg, strLen);
+
+    m.lock();
+    for (i = 0; i < clntCnt; i++) 
+    {
+        if (hClntSock == clntSocks[i])
+        {
+            while (i++ < clntCnt - 1)
+                clntSocks[i] = clntSocks[i + 1];
+            break;
+        }
+    }
+    clntCnt--;
+    m.unlock();
+    closesocket(hClntSock);
+}
+
+void SendMsg(char* msg, int len) 
+{
+    int i;
+    m.lock();
+    for (i = 0; i < clntCnt; i++)
+        send(clntSocks[i], msg, len, 0);
+    m.unlock();
+}
+```
+HandleClnt함수는 연결된 클라이언트가 보낸 데이터를 recv하여 받은 데이터를 hClntSock에 포함된 모든 클라이언트 소켓에게 다시 보내고 있습니다.</br>
+공유 자원인 hClntSock에 접근하므로 동기화처리를 해줬습니다.</br>
