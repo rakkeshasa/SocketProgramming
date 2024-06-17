@@ -584,3 +584,6 @@ FD_ACCEPT에 관한 이벤트가 발생했다면 클라이언트 소켓을 생�
 
 ### 시현 영상
 
+https://github.com/rakkeshasa/SocketProgramming/assets/77041622/fa8a406b-2ac6-415b-81ff-9051c2cdbcb7
+
+
