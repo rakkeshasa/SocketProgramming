@@ -19,11 +19,18 @@
 <strong>커널 오브젝트</strong></BR>
 운영체제에 의해서 생성되는 리소스들(프로세스, 쓰레드, 파일 등)은 관리를 목적으로 정보를 기록하기 위해 내부적으로 데이터 블록을 생성하는데 이를 '커널 오브젝트'라고 한다.</br>
 커널 오브젝트의 소유자는 커널(운영체제)이므로 커널 오브젝트의 생성, 관리, 소멸시점을 결정하는 것은 운영체제 몫이다.</br>
+커널 오브젝트가 종료된 상태를 signaled상태라 하고, 종료되지 않은 상태를 non-signaled상태라 한다.</br>
+여기서 signaled상태를 자동으로 non-signaled상태로 되돌리는 커널 오브젝트를 auto-reset 모드 커널이라고 하며, 자동으로 non-signaled 상태가 되지 않는 커널 오브젝트를 manual-reset 모드 커널 오브젝트라고 한다.</br>
 C++에서 HANDLE을 볼 수 있는데, 여기서 HANDLE은 커널 오브젝트의 구분자 역할을 한다.리눅스의 파일 디스크립터에 비유된다고 볼 수 있다.</BR></BR>
 
 <strong>프로세스와 쓰레드</strong></BR>
 프로세스: 운영체제 관점에서 별도의 실행흐름을 구성하는 단위</br>
 쓰레드: 프로세스 관점에서 별도의 실행흐름을 구성하는 단위</br></br>
+
+<strong>세마포어</strong></br>
+임계 영역 처리를 위해 동기화 작업을 위해 Mutex와 세마포어를 이용할 수 있다.</br>
+Mutex는 메모리 공용 영역에 있는 변수에 1개의 쓰레드만 접근이 가능하지만 세마포어는 2개 이상의 쓰레드가 접근할 수 있다.</br>
+세마포어 카운터는 임계 영역에 최대 몇개의 쓰레드가 들어갈 수 있는지를 의미한다.</br></br>
 
 ## TCP 방식의 에코서버 구현
 <strong>1. 서버 구현</strong>
@@ -328,29 +335,252 @@ https://github.com/rakkeshasa/SocketProgramming/assets/77041622/56397c30-9186-43
 </br>
 
 ## 멀티 쓰레드 서버
-멀티 프로세스 서버는 프로세스 생성이라는 부담스러운 작업과정과 두 프로세스 사이의 데이터 교환이 어렵다는 점이 있다.</br>
-또한 초당 수십 번에서 수천 번 일어나는 컨텍스트 스위칭으로 인해 부담이 크다.</br>
-이를 해결하기 위해 멀티 쓰레드 서버가 나왔으며 여기서 멀티 쓰레드는 <strong>스택을 제외한 메모리 영역을 공유</strong>하기 때문에 데이터 교환이 쉽다.</br>
-대신 둘 이상의 쓰레드가 공유 메모리 영역의 변수에 동시에 접근하여 수정하는 <strong>임계영역</strong> 문제가 생길 수 있다.</br>
-이를 위해 뮤텍스나 세마포어, 이벤트 처리 등으로 <strong>동기화 작업</strong>을 하여 임계영역 문제를 해결해줘야한다.</br></br>
+멀티 프로세스 서버는 프로세스 생성이라는 부담스러운 작업과정과 두 프로세스 사이의 데이터 교환이 어렵다는 점이 있습니다.</br>
+또한 초당 수십 번에서 수천 번 일어나는 컨텍스트 스위칭으로 인해 부담이 큽니다.</br>
+이를 해결하기 위해 멀티 쓰레드 서버가 나왔으며 여기서 멀티 쓰레드는 <strong>스택을 제외한 메모리 영역을 공유</strong>하기 때문에 데이터 교환이 쉽습니다.</br>
+대신 둘 이상의 쓰레드가 공유 메모리 영역의 변수에 동시에 접근하여 수정하는 <strong>임계영역</strong> 문제가 생길 수 있습니다.</br>
+이를 위해 뮤텍스나 세마포어, 이벤트 처리 등으로 <strong>동기화 작업</strong>을 하여 임계영역 문제를 해결해줘야합니다.</br></br>
 
 <strong>1. 서버 구현</strong>
 ```
-// 서버 소켓 생성 코드 생략
+SOCKET clntSocks[MAX_CLNT];
+Mutex m;
 
-while (1)
+int main()
 {
-    clntAdrSz = sizeof(clntAdr);
-    hClntSock = accept(hServSock, (SOCKADDR*)&clntAdr, &clntAdrSz);
+    // 서버 소켓 생성 및 초기화 과정 생략
 
-    WaitForSingleObject(hMutex, INFINITE);
-    clntSocks[clntCnt++] = hClntSock;
-    ReleaseMutex(hMutex);
+    while (1)
+    {
+        clntAdrSz = sizeof(clntAdr);
+        hClntSock = accept(hServSock, (SOCKADDR*)&clntAdr, &clntAdrSz);
 
-    hThread =
-        (HANDLE)_beginthreadex(NULL, 0, HandleClnt, (void*)&hClntSock, 0, NULL);
-    printf("Connected client IP: %s \n", inet_ntoa(clntAdr.sin_addr));
+	m.lock();
+        clntSocks[clntCnt++] = hClntSock;
+	m.unlock();
+
+        thread(HandleClnt, &hClntSock).detach();
+        printf("Connected client IP: %s \n", inet_ntoa(clntAdr.sin_addr));
+    }
+    closesocket(hServSock);
+    WSACleanup();
+    return 0;
 }
 ```
-서버 소켓 생성 후 while문에서 클라이언트의 소켓에게 connect 요청이 오면 accept을 해주고 있습니다.</br>
+하나 이상의 클라이언트와 연결을 하기 위해 SOCKET형 배열을 선언해주고, 클라이언트가 connect요청을 하면 accept을 합니다.</br>
+accept후에는 clntSocks배열에 클라이언트 소켓을 넣고 동기화처리를 해줍니다.clntSocks는 전역변수로 메모리의 데이터 영역에 들어가므로 쓰레드의 공유자원이므로 동기화 처리가 필요합니다.</br></br>
+
+이후 각 클라이언트 소켓 별로 쓰레드를 생성하여 HandleClnt함수를 실행합니다. 쓰레드 생성시 detach()를 사용한 이유는 메인 쓰레드가 클라이언트 쓰레드의 종료를 기다리지 않게하기 위함입니다.</br>
+그러지 않을 시 다른 클라이언트가 연결을 하고 연결 종료를 하기 전까지 블로킹 상태가 되어 다른 클라이언트를 받지 못해 서버가 여러 클라이언트를 동시에 처리하지 못합니다.</br>
+detach()를 하여 메인 쓰레드에 독립적인 클라이언트 쓰레드를 생성하고, 클라이언트 쓰레드는 HandleClnt함수가 끝나면 소멸됩니다.</br></br>
+
+```
+void HandleClnt(SOCKET* Sock)
+{
+    while ((strLen = recv(hClntSock, msg, sizeof(msg), 0)) != 0)
+        SendMsg(msg, strLen);
+
+    m.lock();
+    for (i = 0; i < clntCnt; i++) 
+    {
+        if (hClntSock == clntSocks[i])
+        {
+            while (i++ < clntCnt - 1)
+                clntSocks[i] = clntSocks[i + 1];
+            break;
+        }
+    }
+    clntCnt--;
+    m.unlock();
+    closesocket(hClntSock);
+}
+
+void SendMsg(char* msg, int len) 
+{
+    int i;
+    m.lock();
+    for (i = 0; i < clntCnt; i++)
+        send(clntSocks[i], msg, len, 0);
+    m.unlock();
+}
+```
+HandleClnt함수는 연결된 클라이언트가 보낸 데이터를 recv하여 받은 데이터를 hClntSock에 포함된 모든 클라이언트 소켓에게 다시 보내고 있습니다.</br>
+공유 자원인 hClntSock에 접근하므로 동기화처리를 해줬습니다.</br>
+받은 데이터의 크기가 0이라면 클라이언트가 연결 종료를 한 것이므로 클라이언트 소켓 배열에서 해당 소켓을 제거해줍니다.</br>
+for문을 이용하여 접속 종료한 클라이언트 소켓의 인덱스를 찾고, while문을 통해 다음 인덱스 소켓을 앞으로 한 칸씩 땡겨주고 있습니다.</br>
+클라이언트 소켓 작업이 끝나면 서버에 있는 클라이언트 소켓을 닫아줍니다.</br></br>
+
+SendMsg함수에서는 clntSocks에 있는 모든 클라이언트 소켓에게 데이터를 전송하고 있습니다.</br></br>
+
+<strong>2. 클라이언트 구현</strong>
+
+```
+if (connect(hSock, (SOCKADDR*)&servAdr, sizeof(servAdr)) == SOCKET_ERROR)
+	ErrorHandling("connect() error");
+
+thread sndThread(SendMsg, &hSock);
+thread rcvThread(RecvMsg, &hSock);
+
+sndThread.join();
+rcvThread.join();
+
+closesocket(hSock);
+```
+클라이언트에서는 데이터를 받는 쓰레드와 데이터를 보내는 쓰레드를 생성하였습니다.</br>
+두 쓰레드는 쓰레드 함수가 끝나야 join함수로 인해 소멸이 되고, 이후에 closesocket을 통해 소켓을 닫습니다.</br></br>
+
+```
+void SendMsg(SOCKET* Sock)
+{
+	SOCKET hSock = *(Sock);
+	while (1)
+	{
+		fgets(msg, BUF_SIZE, stdin);
+		if (!strcmp(msg, "q\n") || !strcmp(msg, "Q\n"))
+		{
+			closesocket(hSock);
+			exit(0);
+		}
+		sprintf(nameMsg, "%s %s", name, msg);
+		send(hSock, nameMsg, strlen(nameMsg), 0);
+	}
+}
+
+void RecvMsg(SOCKET* Sock)
+{
+	int hSock = *(Sock);
+	char nameMsg[NAME_SIZE + BUF_SIZE];
+	int strLen;
+	while (1)
+	{
+		strLen = recv(hSock, nameMsg, NAME_SIZE + BUF_SIZE - 1, 0);
+		if (strLen == -1)
+			break;
+		nameMsg[strLen] = 0;
+		fputs(nameMsg, stdout);
+	}
+}
+```
+각 쓰레드별로 실행하는 쓰레드 함수입니다. SendMsg함수에서는 데이터를 입력받아 서버로 데이터를 보냅니다.</br>
+만약 입력받은 데이터가 q나 Q라면 소켓을 닫고 SendMsg함수를 종료합니다.</br>
+SendMsg함수가 종료되면 main함수에서 join()을 통해 해당 쓰레드를 소멸시킵니다.</br></br>
+
+RecvMsg함수는 서버가 보낸 데이터를 받는 역할을 하는 함수로 받은 데이터의 길이가 -1이라면 while문을 빠져나와
+함수를 종료하고 main에서 해당 쓰레드를 소멸시킵니다.</br></br>
+
+### 시현 영상
+
+https://github.com/rakkeshasa/SocketProgramming/assets/77041622/b1ad0345-9df8-42a3-9694-be09ecc2b3ad
+
+</br>
+
+## 비동기 Notification IO 서버
+그 동안 사용했던 send와 recv함수를 통해 동기화된 입출력을 사용했습니다.</br>
+여기서 <strong>동기</strong>란 send를 통해 예를 들자면 데이터를 전송했으면 데이터가 전송 완료가 된 시점에 send가 반환됩니다.</br>
+따라서 함수의 호출 및 반환시점과 데이터의 송수신 시작 및 완료 시점이 일치한다면 동기적입니다.</br></br>
+
+<strong>비동기</strong>는 동기와 반대로 입출력 함수의 반환시점과 데이터 송수신의 완료시점이 일치하지 않는 경우로 함수가 호출되자마자 반환이됩니다.</br>
+동기 방식으로 데이터를 주고 받으면 호출된 함수가 반환을 할 때까지 다른 일을 할 수가 없다는 단점을 극복한 방법입니다.</br></br>
+
+Notification IO의 의미는 IO와 관련해서 특정 상황이 발생했음을 알리는 것입니다.</br>
+대표적인 Notification IO의 모델은 select방식으로 select함수는 호출된 함수의 반환이라는 과정을 통해 IO가 필요한 상황을 알립니다.</br>
+여기서 select가 반환되는 시점과 IO가 필요한 시점이 일치하므로 select방식은 동기적 방식입니다.</br></br>
+
+<strong>WSAEventSelect</strong>함수는 select 함수의 비동기 버전으로 윈도우 운영체제에서만 사용가능하다.</br>
+동기 방식에서는 IO의 상태변화가 일어나면 함수가 반환하여 어느 시점인지 알았으나, 비동기 방식에서는 함수가 바로 반환되므로 IO의 상태가 변환되는지 모릅니다.</br>
+따라서 IO의 관찰을 명령하고 다른 일을 하다가 이후에 IO의 상태가 변했는지 확인하는식으로 IO의 상태변화를 확인합니다.</br></br>
+
+```
+newEvent = WSACreateEvent();
+if (WSAEventSelect(hServSock, newEvent, FD_ACCEPT) == SOCKET_ERROR)
+    ErrorHandling("WSAEventSelect() error");
+```
+
+WSACreateEvent함수로 Event객체를 생성합니다. 해당 함수로 생성되는 Event객체는 manual-reset 모드이면서 non-signaled상태입니다.</br></br>
+
+WSAEventSelect함수는 임의의 소켓 대상으로 이벤트 발생여부의 관찰을 명령할 때 사용하는 함수입니다.</br>
+매개변수로 들어가 hServSock은 관찰 대상 소켓이며, newEvent는 이벤트 발생유무의 확인을 위한 Event오브젝트의 HANDLE입니다.</br>
+마지막 매개변수인 FD_ACCEPT은 감시하고자 하는 이벤트의 유형으로 연결요청 이벤트를 감시합니다.</br>
+따라서 hServSock에서 연결 요청 이벤트가 발생하면 newEvent를 signaled상태로 변경하게됩니다.</br></br>
+
+WSAEventSelect함수는 Event 객체와 소켓을 연결하며, 이벤트의 발생유무에 상관없이 바로 반환을 하므로 함수 호출 이후에 다른 작업을 진행할 수 있습니다.</br>
+select함수와 달리 반환이후에 이벤트 발생확인을 위해 모든 파일 디스크립터를 재호출할 필요가 없습니다. 따라서 부하가 적어집니다.</br></br>
+
+```
+while (1)
+{
+    posInfo = WSAWaitForMultipleEvents(numOfClntSock, hEventArr, FALSE, WSA_INFINITE, FALSE);
+    startIdx = posInfo - WSA_WAIT_EVENT_0;
+
+    for (i = startIdx; i < numOfClntSock; i++)
+    {
+        int sigEventIdx = WSAWaitForMultipleEvents(1, &hEventArr[i], TRUE, 0, FALSE);
+
+        if ((sigEventIdx == WSA_WAIT_FAILED || sigEventIdx == WSA_WAIT_TIMEOUT))
+            continue;
+        else
+        {
+            sigEventIdx = i;
+            WSAEnumNetworkEvents(hSockArr[sigEventIdx], hEventArr[sigEventIdx], &netEvents);
+
+            if (netEvents.lNetworkEvents & FD_ACCEPT)
+            {
+                if (netEvents.iErrorCode[FD_ACCEPT_BIT] != 0)
+                {
+                    puts("Accept Error");
+                    break;
+                }
+
+                clntAdrLen = sizeof(clntAdr);
+                hClntSock = accept(hSockArr[sigEventIdx], (SOCKADDR*)&clntAdr, &clntAdrLen);
+                newEvent = WSACreateEvent();
+                WSAEventSelect(hClntSock, newEvent, FD_READ | FD_CLOSE);
+
+                hEventArr[numOfClntSock] = newEvent;
+                hSockArr[numOfClntSock] = hClntSock;
+                numOfClntSock++;
+                puts("connected new client...");
+            }
+        }
+    }
+}
+```
+WSAEventSelect함수는 이벤트 발생유무와 상관없이 바로 반환 되므로 이벤트 발생유무를 따로 확인해줘야 합니다.</br>
+해당 역할을 하는 함수가 WaitForMultipleObject함수로 Event 객체를 통하여 이벤트 발생유무를 확인합니다.</br>
+<strong>WaitForMultipleObject</strong>함수는 소켓의 이벤트 발생을 통해 Event 객체가 signaled 상태가 되면 반환하는 함수입니다.</br></br>
+
+매개변수를 살펴보면 첫 번째 매개변수 numOfClntSock는 signaled 상태가 되었는지 확인할 Event 객체의 개수를 의미하며, 두 번째 매개변수는 Event 객체의 핸들을 저장하고 배열의 주소 값입니다.</br>
+3번째 매개변수는 TRUE로 설정하면 모든 Event 객체가 signaled 상태일 때 반환을 하고, False일 시 Event 객체 중 하나라도 signaled 상태로 바뀌면 반환합니다.</br>
+4번째 매개변수는 타임아웃 관련 설정으로 WSA_INFINTE로 설정하면 signaled 상태가 될 때까지 함수를 반환하지 않게됩니다.</br>
+마지막 매개변수는 alertable wait 상태로 진입할지 여부이며, 함수의 반환 값은 두 번째 매개변수인 Event 객체의 핸들을 저장한 배열을 기준으로, signaled 상태가 된 Event 객체의 핸들이 저장된 인덱스가 반환됩니다.</br>
+만약 두 개 이상의 Event 객체가 signaled 상태가 되었다면 그 중 작은 인덱스를 반환하고, 타임아웃시 WAIT_TIMEOUT이 반환됩니다.</br></br>
+
+이후 for문을 통해 다시 한번 WaitForMultipleObject함수를 사용하여 모든 Event객체를 확인하여 signaled 상태로 전이된 Event 객체를 찾습니다.</br>
+Event 객체를 찾았다면 이벤트가 발생한 원인을 찾기 위해 WSAEnumNetworkEvents함수를 사용하여 원인을 찾고 Event 객체를 non-signaled 상태로 되돌려줍니다.</br>
+WSAEnumNetworkEvents의 첫번째 매개변수는 이벤트가 발생한 소켓의 핸들로 관찰 대상인 소켓입니다.</br>
+두번째 매개변수는 소켓과 연결된 signaled 상태인 Event 객체의 핸들입니다. WSAEventSelect를 통해 소켓과 Event 객체를 연결해줬습니다.</br>
+세번째 매개변수는 발생한 이벤트의 유형정보와 오류정보로 채워질 WSANETWORKEVENTS 구조체 변수의 주소 값입니다.</br></br>
+
+```
+typedef struct _WSANETWORKEVENTS {
+       long lNetworkEvents;
+       int iErrorCode[FD_MAX_EVENTS];
+} WSANETWORKEVENTS, FAR * LPWSANETWORKEVENTS;
+```
+</br>
+
+WSANETWORKEVENTS의 구조체를 살펴보면 2개의 멤버 변수가 있습니다.</br>
+여기서 INetworkEvents에는 발생한 이벤트의 정보가 담기는데, 수신할 데이터가 존재하면 FD_READ가 저장되고, 연결 요청이 있는 경우에는 FD_ACCEPT가 담기게 됩니다.</br>
+따라서 다음과 같은 코드로 발생한 이벤트의 종류를 확인하고 이벤트 발생에 대한 처리를 할 수 있습니다.</br>
+```
+if (netEvents.lNetworkEvents & FD_ACCEPT)
+```
+</br>
+iErrorCode에는 오류발생에 대한 정보로 오류발생 원인이 2개 이상일 수 있으므로 배열로 선언되어 있습니다.</br></br>
+
+FD_ACCEPT에 관한 이벤트가 발생했다면 클라이언트 소켓을 생성하고 해당 클라이언트 소켓을 관찰대상으로 FD_READ와 FD_CLOSE 이벤트가 발생하는지 확인하기 위해 Event 객체와 연결합니다.</br>
+이후 WSAEventSelect 함수 호출을 통해 연결되는 소켓과 Event 객체의 핸들 정보를 각각 배열 hSockArr과 hEventArr에 저장합니다.</br>
+같은 인덱스를 사용하여 저장하는 이유는 소켓을 통해 Event 객체를 찾을 수 있어야 하고, 반대로 Event 객체에 연결된 소켓을 찾기 위해 저장 위치를 통일시키기 위함입니다.</br></br>
+
+### 시현 영상
 
