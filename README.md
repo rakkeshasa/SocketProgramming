@@ -409,3 +409,65 @@ for문을 이용하여 접속 종료한 클라이언트 소켓의 인덱스를 �
 클라이언트 소켓 작업이 끝나면 서버에 있는 클라이언트 소켓을 닫아줍니다.</br></br>
 
 SendMsg함수에서는 clntSocks에 있는 모든 클라이언트 소켓에게 데이터를 전송하고 있습니다.</br></br>
+
+<strong>2. 클라이언트 구현</strong>
+
+```
+if (connect(hSock, (SOCKADDR*)&servAdr, sizeof(servAdr)) == SOCKET_ERROR)
+	ErrorHandling("connect() error");
+
+thread sndThread(SendMsg, &hSock);
+thread rcvThread(RecvMsg, &hSock);
+
+sndThread.join();
+rcvThread.join();
+
+closesocket(hSock);
+```
+클라이언트에서는 데이터를 받는 쓰레드와 데이터를 보내는 쓰레드를 생성하였습니다.</br>
+두 쓰레드는 쓰레드 함수가 끝나야 join함수로 인해 소멸이 되고, 이후에 closesocket을 통해 소켓을 닫습니다.</br></br>
+
+```
+void SendMsg(SOCKET* Sock)
+{
+	SOCKET hSock = *(Sock);
+	while (1)
+	{
+		fgets(msg, BUF_SIZE, stdin);
+		if (!strcmp(msg, "q\n") || !strcmp(msg, "Q\n"))
+		{
+			closesocket(hSock);
+			exit(0);
+		}
+		sprintf(nameMsg, "%s %s", name, msg);
+		send(hSock, nameMsg, strlen(nameMsg), 0);
+	}
+}
+
+void RecvMsg(SOCKET* Sock)
+{
+	int hSock = *(Sock);
+	char nameMsg[NAME_SIZE + BUF_SIZE];
+	int strLen;
+	while (1)
+	{
+		strLen = recv(hSock, nameMsg, NAME_SIZE + BUF_SIZE - 1, 0);
+		if (strLen == -1)
+			break;
+		nameMsg[strLen] = 0;
+		fputs(nameMsg, stdout);
+	}
+}
+```
+각 쓰레드별로 실행하는 쓰레드 함수입니다. SendMsg함수에서는 데이터를 입력받아 서버로 데이터를 보냅니다.</br>
+만약 입력받은 데이터가 q나 Q라면 소켓을 닫고 SendMsg함수를 종료합니다.</br>
+SendMsg함수가 종료되면 main함수에서 join()을 통해 해당 쓰레드를 소멸시킵니다.</br></br>
+
+RecvMsg함수는 서버가 보낸 데이터를 받는 역할을 하는 함수로 받은 데이터의 길이가 -1이라면 while문을 빠져나와
+함수를 종료하고 main에서 해당 쓰레드를 소멸시킵니다.</br></br>
+
+### 시현 영상
+
+https://github.com/rakkeshasa/SocketProgramming/assets/77041622/b1ad0345-9df8-42a3-9694-be09ecc2b3ad
+
+
