@@ -545,3 +545,42 @@ while (1)
     }
 }
 ```
+WSAEventSelect함수는 이벤트 발생유무와 상관없이 바로 반환 되므로 이벤트 발생유무를 따로 확인해줘야 합니다.</br>
+해당 역할을 하는 함수가 WaitForMultipleObject함수로 Event 객체를 통하여 이벤트 발생유무를 확인합니다.</br>
+<strong>WaitForMultipleObject</strong>함수는 소켓의 이벤트 발생을 통해 Event 객체가 signaled 상태가 되면 반환하는 함수입니다.</br></br>
+
+매개변수를 살펴보면 첫 번째 매개변수 numOfClntSock는 signaled 상태가 되었는지 확인할 Event 객체의 개수를 의미하며, 두 번째 매개변수는 Event 객체의 핸들을 저장하고 배열의 주소 값입니다.</br>
+3번째 매개변수는 TRUE로 설정하면 모든 Event 객체가 signaled 상태일 때 반환을 하고, False일 시 Event 객체 중 하나라도 signaled 상태로 바뀌면 반환합니다.</br>
+4번째 매개변수는 타임아웃 관련 설정으로 WSA_INFINTE로 설정하면 signaled 상태가 될 때까지 함수를 반환하지 않게됩니다.</br>
+마지막 매개변수는 alertable wait 상태로 진입할지 여부이며, 함수의 반환 값은 두 번째 매개변수인 Event 객체의 핸들을 저장한 배열을 기준으로, signaled 상태가 된 Event 객체의 핸들이 저장된 인덱스가 반환됩니다.</br>
+만약 두 개 이상의 Event 객체가 signaled 상태가 되었다면 그 중 작은 인덱스를 반환하고, 타임아웃시 WAIT_TIMEOUT이 반환됩니다.</br></br>
+
+이후 for문을 통해 다시 한번 WaitForMultipleObject함수를 사용하여 모든 Event객체를 확인하여 signaled 상태로 전이된 Event 객체를 찾습니다.</br>
+Event 객체를 찾았다면 이벤트가 발생한 원인을 찾기 위해 WSAEnumNetworkEvents함수를 사용하여 원인을 찾고 Event 객체를 non-signaled 상태로 되돌려줍니다.</br>
+WSAEnumNetworkEvents의 첫번째 매개변수는 이벤트가 발생한 소켓의 핸들로 관찰 대상인 소켓입니다.</br>
+두번째 매개변수는 소켓과 연결된 signaled 상태인 Event 객체의 핸들입니다. WSAEventSelect를 통해 소켓과 Event 객체를 연결해줬습니다.</br>
+세번째 매개변수는 발생한 이벤트의 유형정보와 오류정보로 채워질 WSANETWORKEVENTS 구조체 변수의 주소 값입니다.</br></br>
+
+```
+typedef struct _WSANETWORKEVENTS {
+       long lNetworkEvents;
+       int iErrorCode[FD_MAX_EVENTS];
+} WSANETWORKEVENTS, FAR * LPWSANETWORKEVENTS;
+```
+</br>
+
+WSANETWORKEVENTS의 구조체를 살펴보면 2개의 멤버 변수가 있습니다.</br>
+여기서 INetworkEvents에는 발생한 이벤트의 정보가 담기는데, 수신할 데이터가 존재하면 FD_READ가 저장되고, 연결 요청이 있는 경우에는 FD_ACCEPT가 담기게 됩니다.</br>
+따라서 다음과 같은 코드로 발생한 이벤트의 종류를 확인하고 이벤트 발생에 대한 처리를 할 수 있습니다.</br>
+```
+if (netEvents.lNetworkEvents & FD_ACCEPT)
+```
+</br>
+iErrorCode에는 오류발생에 대한 정보로 오류발생 원인이 2개 이상일 수 있으므로 배열로 선언되어 있습니다.</br></br>
+
+FD_ACCEPT에 관한 이벤트가 발생했다면 클라이언트 소켓을 생성하고 해당 클라이언트 소켓을 관찰대상으로 FD_READ와 FD_CLOSE 이벤트가 발생하는지 확인하기 위해 Event 객체와 연결합니다.</br>
+이후 WSAEventSelect 함수 호출을 통해 연결되는 소켓과 Event 객체의 핸들 정보를 각각 배열 hSockArr과 hEventArr에 저장합니다.</br>
+같은 인덱스를 사용하여 저장하는 이유는 소켓을 통해 Event 객체를 찾을 수 있어야 하고, 반대로 Event 객체에 연결된 소켓을 찾기 위해 저장 위치를 통일시키기 위함입니다.</br></br>
+
+### 시현 영상
+
