@@ -8,26 +8,30 @@
 #define BUF_SIZE 100
 #define MAX_CLNT 256
 
-void HandleClnt(SOCKET* Sock);
-void SendMsg(char* msg, int len);
+void CompressSockets(SOCKET hSockArr[], int idx, int total);
+void CompressEvents(WSAEVENT hEventArr[], int idx, int total);
 void ErrorHandling(const char *message);
-
-int clntCnt = 0;
-SOCKET clntSocks[MAX_CLNT];
-Mutex m;
-HANDLE hMutex;
 
 int main()
 {
     WSADATA wsaData;
     SOCKET hServSock, hClntSock;
     SOCKADDR_IN servAdr, clntAdr;
-    int clntAdrSz;
+
+    SOCKET hSockArr[WSA_MAXIMUM_WAIT_EVENTS];
+    WSAEVENT hEventArr[WSA_MAXIMUM_WAIT_EVENTS];
+    WSAEVENT newEvent;
+    WSANETWORKEVENTS netEvents;
+
+    int numOfClntSock = 0;
+    int strLen, i;
+    int posInfo, startIdx;
+    int clntAdrLen;
+    char msg[BUF_SIZE];
 
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
         ErrorHandling("WSAStartup() error!");
 
-    hMutex = CreateMutex(NULL, FALSE, NULL);
     hServSock = socket(PF_INET, SOCK_STREAM, 0);
 
     memset(&servAdr, 0, sizeof(servAdr));
@@ -40,53 +44,95 @@ int main()
     if (listen(hServSock, 5) == SOCKET_ERROR)
         ErrorHandling("listen() error");
 
+    newEvent = WSACreateEvent();
+    if (WSAEventSelect(hServSock, newEvent, FD_ACCEPT) == SOCKET_ERROR)
+        ErrorHandling("WSAEventSelect() error");
+
+    hSockArr[numOfClntSock] = hServSock;
+    hEventArr[numOfClntSock] = newEvent;
+    numOfClntSock++;
+
     while (1)
     {
-        clntAdrSz = sizeof(clntAdr);
-        hClntSock = accept(hServSock, (SOCKADDR*)&clntAdr, &clntAdrSz);
+        posInfo = WSAWaitForMultipleEvents(numOfClntSock, hEventArr, FALSE, WSA_INFINITE, FALSE);
+        startIdx = posInfo - WSA_WAIT_EVENT_0;
 
-        m.lock();
-        clntSocks[clntCnt++] = hClntSock;
-        m.unlock();
+        for (i = startIdx; i < numOfClntSock; i++)
+        {
+            int sigEventIdx = WSAWaitForMultipleEvents(1, &hEventArr[i], TRUE, 0, FALSE);
+            if ((sigEventIdx == WSA_WAIT_FAILED || sigEventIdx == WSA_WAIT_TIMEOUT))
+                continue;
+            else
+            {
+                sigEventIdx = i;
+                WSAEnumNetworkEvents(hSockArr[sigEventIdx], hEventArr[sigEventIdx], &netEvents);
 
-        thread(HandleClnt, &hClntSock).detach();
-        printf("Connected client IP: %s \n", inet_ntoa(clntAdr.sin_addr));
+                if (netEvents.lNetworkEvents & FD_ACCEPT)
+                {
+                    if (netEvents.iErrorCode[FD_ACCEPT_BIT] != 0)
+                    {
+                        puts("Accept Error");
+                        break;
+                    }
+
+                    clntAdrLen = sizeof(clntAdr);
+                    hClntSock = accept(hSockArr[sigEventIdx], (SOCKADDR*)&clntAdr, &clntAdrLen);
+                    newEvent = WSACreateEvent();
+                    WSAEventSelect(hClntSock, newEvent, FD_READ | FD_CLOSE);
+
+                    hEventArr[numOfClntSock] = newEvent;
+                    hSockArr[numOfClntSock] = hClntSock;
+                    numOfClntSock++;
+                    puts("connected new client...");
+                }
+
+                if (netEvents.lNetworkEvents & FD_READ)
+                {
+                    if (netEvents.iErrorCode[FD_READ_BIT] != 0)
+                    {
+                        puts("Read Error");
+                        break;
+                    }
+
+                    strLen = recv(hSockArr[sigEventIdx], msg, sizeof(msg), 0);
+                    send(hSockArr[sigEventIdx], msg, strLen, 0);
+                }
+
+                if (netEvents.lNetworkEvents & FD_CLOSE)
+                {
+                    if (netEvents.iErrorCode[FD_CLOSE_BIT] != 0)
+                    {
+                        puts("Close Error");
+                        break;
+                    }
+
+                    WSACloseEvent(hEventArr[sigEventIdx]);
+                    closesocket(hSockArr[sigEventIdx]);
+
+                    numOfClntSock--;
+                    CompressSockets(hSockArr, sigEventIdx, numOfClntSock);
+                    CompressEvents(hEventArr, sigEventIdx, numOfClntSock);
+                }
+            }
+        }
     }
-    closesocket(hServSock);
+
     WSACleanup();
     return 0;
 }
 
-void HandleClnt(SOCKET* Sock)
-{
-    SOCKET hClntSock = *(Sock);
-    int strLen = 0, i;
-    char msg[BUF_SIZE];
-
-    while ((strLen = recv(hClntSock, msg, sizeof(msg), 0)) != 0)
-        SendMsg(msg, strLen);
-
-    m.lock();
-    for (i = 0; i < clntCnt; i++) 
-    {
-        if (hClntSock == clntSocks[i])
-        {
-            while (i++ < clntCnt - 1)
-                clntSocks[i] = clntSocks[i + 1];
-            break;
-        }
-    }
-    clntCnt--;
-    m.unlock();
-    closesocket(hClntSock);
-}
-void SendMsg(char* msg, int len) 
+void CompressSockets(SOCKET hSockArr[], int idx, int total)
 {
     int i;
-    m.lock();
-    for (i = 0; i < clntCnt; i++)
-        send(clntSocks[i], msg, len, 0);
-    m.unlock();
+    for (i = idx; i < total; i++)
+        hSockArr[i] = hSockArr[i + 1];
+}
+
+void CompressEvents(WSAEVENT hEventArr[], int idx, int total)
+{
+    int i;
+    for (i = idx; i < total; i++)
+        hEventArr[i] = hEventArr[i + 1];
 }
 
 void ErrorHandling(const char *message)
