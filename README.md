@@ -19,6 +19,8 @@
 <strong>커널 오브젝트</strong></BR>
 운영체제에 의해서 생성되는 리소스들(프로세스, 쓰레드, 파일 등)은 관리를 목적으로 정보를 기록하기 위해 내부적으로 데이터 블록을 생성하는데 이를 '커널 오브젝트'라고 한다.</br>
 커널 오브젝트의 소유자는 커널(운영체제)이므로 커널 오브젝트의 생성, 관리, 소멸시점을 결정하는 것은 운영체제 몫이다.</br>
+커널 오브젝트가 종료된 상태를 signaled상태라 하고, 종료되지 않은 상태를 non-signaled상태라 한다.</br>
+여기서 signaled상태를 자동으로 non-signaled상태로 되돌리는 커널 오브젝트를 auto-reset 모드 커널이라고 하며, 자동으로 non-signaled 상태가 되지 않는 커널 오브젝트를 manual-reset 모드 커널 오브젝트라고 한다.</br>
 C++에서 HANDLE을 볼 수 있는데, 여기서 HANDLE은 커널 오브젝트의 구분자 역할을 한다.리눅스의 파일 디스크립터에 비유된다고 볼 수 있다.</BR></BR>
 
 <strong>프로세스와 쓰레드</strong></BR>
@@ -488,5 +490,58 @@ Notification IO의 의미는 IO와 관련해서 특정 상황이 발생했음을
 동기 방식에서는 IO의 상태변화가 일어나면 함수가 반환하여 어느 시점인지 알았으나, 비동기 방식에서는 함수가 바로 반환되므로 IO의 상태가 변환되는지 모릅니다.</br>
 따라서 IO의 관찰을 명령하고 다른 일을 하다가 이후에 IO의 상태가 변했는지 확인하는식으로 IO의 상태변화를 확인합니다.</br></br>
 
+```
+newEvent = WSACreateEvent();
+if (WSAEventSelect(hServSock, newEvent, FD_ACCEPT) == SOCKET_ERROR)
+    ErrorHandling("WSAEventSelect() error");
+```
 
+WSACreateEvent함수로 Event객체를 생성합니다. 해당 함수로 생성되는 Event객체는 manual-reset 모드이면서 non-signaled상태입니다.</br></br>
 
+WSAEventSelect함수는 임의의 소켓 대상으로 이벤트 발생여부의 관찰을 명령할 때 사용하는 함수입니다.</br>
+매개변수로 들어가 hServSock은 관찰 대상 소켓이며, newEvent는 이벤트 발생유무의 확인을 위한 Event오브젝트의 HANDLE입니다.</br>
+마지막 매개변수인 FD_ACCEPT은 감시하고자 하는 이벤트의 유형으로 연결요청 이벤트를 감시합니다.</br>
+따라서 hServSock에서 연결 요청 이벤트가 발생하면 newEvent를 signaled상태로 변경하게됩니다.</br></br>
+
+WSAEventSelect함수는 Event 객체와 소켓을 연결하며, 이벤트의 발생유무에 상관없이 바로 반환을 하므로 함수 호출 이후에 다른 작업을 진행할 수 있습니다.</br>
+select함수와 달리 반환이후에 이벤트 발생확인을 위해 모든 파일 디스크립터를 재호출할 필요가 없습니다. 따라서 부하가 적어집니다.</br></br>
+
+```
+while (1)
+{
+    posInfo = WSAWaitForMultipleEvents(numOfClntSock, hEventArr, FALSE, WSA_INFINITE, FALSE);
+    startIdx = posInfo - WSA_WAIT_EVENT_0;
+
+    for (i = startIdx; i < numOfClntSock; i++)
+    {
+        int sigEventIdx = WSAWaitForMultipleEvents(1, &hEventArr[i], TRUE, 0, FALSE);
+
+        if ((sigEventIdx == WSA_WAIT_FAILED || sigEventIdx == WSA_WAIT_TIMEOUT))
+            continue;
+        else
+        {
+            sigEventIdx = i;
+            WSAEnumNetworkEvents(hSockArr[sigEventIdx], hEventArr[sigEventIdx], &netEvents);
+
+            if (netEvents.lNetworkEvents & FD_ACCEPT)
+            {
+                if (netEvents.iErrorCode[FD_ACCEPT_BIT] != 0)
+                {
+                    puts("Accept Error");
+                    break;
+                }
+
+                clntAdrLen = sizeof(clntAdr);
+                hClntSock = accept(hSockArr[sigEventIdx], (SOCKADDR*)&clntAdr, &clntAdrLen);
+                newEvent = WSACreateEvent();
+                WSAEventSelect(hClntSock, newEvent, FD_READ | FD_CLOSE);
+
+                hEventArr[numOfClntSock] = newEvent;
+                hSockArr[numOfClntSock] = hClntSock;
+                numOfClntSock++;
+                puts("connected new client...");
+            }
+        }
+    }
+}
+```
