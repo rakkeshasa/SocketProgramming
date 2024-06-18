@@ -672,3 +672,30 @@ typedef struct _OVERLAPPED {
 마지막 매개변수인 NULL은 Completion Routine 함수의 주소 값을 전달합니다. 콜백 할 함수의 주소를 넣는 매개변수입니다.</br>
 입출력 완료의 확인을 콜백 함수 방식으로 할 시 해당 함수를 넣고, 이벤트 방식으로 할 시 NULL값을 줘서 확인할 수 있습니다.</BR>
 단, 콜백 함수 방식으로 확인할 때 Event 객체를 사용하지 않는다고 WSAOVERLAPPED 구조체 변수의 주소(&overlapped)를 넣지 않으면 첫 번째 인자로 전달 된 hRecvSock 소켓이 블로킹 모드로 동작하는 일반적인 소켓으로 간주되므로 &overlapped를 반드시 넣어줘야합니다.</BR></BR>
+
+WSARecv에서 SOCKET_ERROR가 뜨고 WSAGetLastError에서 WSA_IO_PENDING이 나오는 경우 WSARecv 함수의 호출 결과가 오류상황이 아닌, 완료되지 않은 상황임을 의미합니다.</br>
+아직 데이터 수신이 진행 중이고, 완료되지 않은 시점이므로 수신이 완료됐을때 함수 호출을 해주는 WSAWaitForMultipleEvents 함수를 사용합니다.</br>
+데이터 수신 완료가 확인되면 WSAGetOverlappedResult 함수를 통해 데이터의 수신 결과를 확인합니다.</br></br>
+
+<strong>2. 송신측 코드</strong>
+```
+hSocket = WSASocket(PF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
+
+if (WSASend(hSocket, &dataBuf, 1, &sendBytes, 0, &overlapped, NULL) == SOCKET_ERROR)
+{
+	if (WSAGetLastError() == WSA_IO_PENDING)
+	{
+		puts("데이터 송신 중...");
+		WSAWaitForMultipleEvents(1, &evObj, TRUE, WSA_INFINITE, FALSE);
+		WSAGetOverlappedResult(hSocket, &overlapped, &sendBytes, FALSE, NULL);
+	}
+	else
+	{
+		ErrorHandling("WSASend() error");
+	}
+}
+
+printf("보낸 데이터의 크기: %d \n", sendBytes);
+WSACloseEvent(evObj);
+```
+WSARecv함수가 WSASend 함수로 바뀐 점 말고는 대부분 유사합니다.</br></br>
