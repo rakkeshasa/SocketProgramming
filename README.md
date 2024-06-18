@@ -486,8 +486,8 @@ Notification IO의 의미는 IO와 관련해서 특정 상황이 발생했음을
 대표적인 Notification IO의 모델은 select방식으로 select함수는 호출된 함수의 반환이라는 과정을 통해 IO가 필요한 상황을 알립니다.</br>
 여기서 select가 반환되는 시점과 IO가 필요한 시점이 일치하므로 select방식은 동기적 방식입니다.</br></br>
 
-<strong>WSAEventSelect</strong>함수는 select 함수의 비동기 버전으로 윈도우 운영체제에서만 사용가능하다.</br>
-동기 방식에서는 IO의 상태변화가 일어나면 함수가 반환하여 어느 시점인지 알았으나, 비동기 방식에서는 함수가 바로 반환되므로 IO의 상태가 변환되는지 모릅니다.</br>
+<strong>WSAEventSelect</strong>함수는 select 함수의 비동기 버전입니다.</br>
+동기 방식에서는 IO의 상태변화가 일어나면 함수가 반환하여 어느 시점인지 알았으나, 비동기 방식에서는 함수가 바로 반환되므로 언제 IO의 상태가 변환되는지 모릅니다.</br>
 따라서 IO의 관찰을 명령하고 다른 일을 하다가 이후에 IO의 상태가 변했는지 확인하는식으로 IO의 상태변화를 확인합니다.</br></br>
 
 ```
@@ -586,4 +586,89 @@ FD_ACCEPT에 관한 이벤트가 발생했다면 클라이언트 소켓을 생�
 
 https://github.com/rakkeshasa/SocketProgramming/assets/77041622/fa8a406b-2ac6-415b-81ff-9051c2cdbcb7
 
+## Overlapped IO 모델
+Overlapped IO(중첩 IO)란 하나의 쓰레드 내에서 동시에 둘 이상의 영역(소켓)으로 데이터를 송수신을 하여 입출력이 중첩되는 상황을 의미합니다.</BR>
 
+![Overlapped IO Model](https://github.com/rakkeshasa/SocketProgramming/assets/77041622/6bb84274-22f1-48d6-9353-671671a0500e)
+<div align="center"><strong>중첩 IO의 예시</strong></div></BR>
+
+따라서 위 사진과 같이 IO를 중첩하기 위해서는 호출된 입출력 함수가 바로 반환이 되어야 하며, 논블로킹 방식으로 동작해야합니다.</br>
+논블로킹 방식으로 동작 시, 완료 결과를 따로 확인을 해줘야하며, Overlapped IO방식을 위해 소켓 역시 Overlapped방식으로 생성해줘야합니다.</br></br>
+
+Overlapped IO 모델에서 입출력 완료의 확인은 Event 객체를 통한 확인과 함수 Callback 방식으로 두 가지 방법으로 확인할 수 있습니다.</br>
+Event 객체를 통해 확인할 시, WSAWaitForMultipleEvents함수를 이용하기 위해 더미 이벤트 객체를 생성해야 하며</br>
+콜백 방식으로 확인할 시, 콜백 할 함수와 해당 함수가 쓰레드의 실행 흐름을 방해하지 않고 실행되기 위해 호출 타이밍을 지정해줘야합니다.</br></br>
+
+<strong>1. 수신측 코드</strong>
+```
+hLisnSock = WSASocket(PF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
+
+// bind, listen 생략...
+
+recvAdrSize = sizeof(recvAdr);
+hRecvSock = accept(hLisnSock, (SOCKADDR*)&recvAdr, &recvAdrSize);
+
+if (WSARecv(hRecvSock, &dataBuf, 1, &recvBytes, &flags, &overlapped, NULL) == SOCKET_ERROR)
+{
+    if (WSAGetLastError() == WSA_IO_PENDING)
+    {
+        puts("데이터 수신 중... 기다려주세요");
+        WSAWaitForMultipleEvents(1, &evObj, TRUE, WSA_INFINITE, FALSE);
+        WSAGetOverlappedResult(hRecvSock, &overlapped, &recvBytes, FALSE, NULL);
+    }
+    else
+    {
+        ErrorHandling("WSARecv() error");
+    }
+}
+
+printf("받은 메시지: %s \n", buf);
+WSACloseEvent(evObj)
+```
+WSASocket함수를 이용해 Overlapped IO모델 전용 소켓을 생성합니다. </br>
+마지막 매개변수에 WSA_FLAG_OVERLAPPED를 전달하여 생성되는 소켓에 Overlapped IO가 가능한 속성을 부여해줍니다.</br>
+이렇게 소켓을 생성하면 Overlapped IO가 가능한 논블로킹 소켓이 생성됩니다.</br></br>
+
+WSARecv함수의 매개변수 중 &dataBuf와 &overlapped, 마지막 NULL이 주요 매개변수입니다.</br>
+&dataBuf는 수신된 데이터 정보가 저장될 버퍼의 정보를 지니는 WSABUF 구조체의 주소입니다.</BR>
+여기서 WSABUF 구조체를 살펴보면</BR>
+
+```
+typedef struct _WSABUF {
+    ULONG len;     /* the length of the buffer */
+    _Field_size_bytes_(len) CHAR FAR *buf; /* the pointer to the buffer */
+} WSABUF, FAR * LPWSABUF;
+```
+
+데이터의 크기와 데이터가 저장될 버퍼(수신버퍼)의 주소를 들고 있음을 확인할 수 있습니다.</BR>
+따라서 WSABUF형 데이터인 dataBuf는 수신 버퍼의 크기와 주소를 미리 지정해줘야합니다.</BR>
+
+```
+char buf[BUF_SIZE];
+dataBuf.len = BUF_SIZE;
+dataBuf.buf = buf;
+```
+<div align="center"><strong>dataBuf를 세팅해주는 코드</strong></div></BR>
+
+두 번째로 살펴볼 &overlapped는 WSAOVERLAPPED 구조체 변수의 주소 값을 전달해주는 역할을 합니다.</BR>
+WSAOVERLAPPED 구조체에는 WSAEVENT형 변수 hEvent가 있어 Event 객체를 사용하여 입출력에 변경된 점이 있는지 체크할 수 있습니다.</br>
+```
+typedef struct _OVERLAPPED {
+    ULONG_PTR Internal;
+    ULONG_PTR InternalHigh;
+    union {
+        struct {
+            DWORD Offset;
+            DWORD OffsetHigh;
+        } DUMMYSTRUCTNAME;
+        PVOID Pointer;
+    } DUMMYUNIONNAME;
+
+    HANDLE  hEvent;
+} OVERLAPPED, *LPOVERLAPPED;
+```
+<div align="center"><strong>WSAOVERLAPPED 구조체의 구성요소</strong></div></BR>
+
+마지막 매개변수인 NULL은 Completion Routine 함수의 주소 값을 전달합니다. 콜백 할 함수의 주소를 넣는 매개변수입니다.</br>
+입출력 완료의 확인을 콜백 함수 방식으로 할 시 해당 함수를 넣고, 이벤트 방식으로 할 시 NULL값을 줘서 확인할 수 있습니다.</BR>
+단, 콜백 함수 방식으로 확인할 때 Event 객체를 사용하지 않는다고 WSAOVERLAPPED 구조체 변수의 주소(&overlapped)를 넣지 않으면 첫 번째 인자로 전달 된 hRecvSock 소켓이 블로킹 모드로 동작하는 일반적인 소켓으로 간주되므로 &overlapped를 반드시 넣어줘야합니다.</BR></BR>
