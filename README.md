@@ -599,7 +599,7 @@ Overlapped IO 모델에서 입출력 완료의 확인은 Event 객체를 통한 
 Event 객체를 통해 확인할 시, WSAWaitForMultipleEvents함수를 이용하기 위해 더미 이벤트 객체를 생성해야 하며</br>
 콜백 방식으로 확인할 시, 콜백 할 함수와 해당 함수가 쓰레드의 실행 흐름을 방해하지 않고 실행되기 위해 호출 타이밍을 지정해줘야합니다.</br></br>
 
-<strong>1. 수신측 코드</strong>
+<strong>1. 이벤트 방식 코드</strong>
 ```
 hLisnSock = WSASocket(PF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
 
@@ -677,25 +677,55 @@ WSARecv에서 SOCKET_ERROR가 뜨고 WSAGetLastError에서 WSA_IO_PENDING이 나
 아직 데이터 수신이 진행 중이고, 완료되지 않은 시점이므로 수신이 완료됐을때 함수 호출을 해주는 WSAWaitForMultipleEvents 함수를 사용합니다.</br>
 데이터 수신 완료가 확인되면 WSAGetOverlappedResult 함수를 통해 데이터의 수신 결과를 확인합니다.</br></br>
 
-<strong>2. 송신측 코드</strong>
+<strong>2. Callback 방식 코드</strong>
 ```
-hSocket = WSASocket(PF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
-
-if (WSASend(hSocket, &dataBuf, 1, &sendBytes, 0, &overlapped, NULL) == SOCKET_ERROR)
+int main()
 {
-	if (WSAGetLastError() == WSA_IO_PENDING)
-	{
-		puts("데이터 송신 중...");
-		WSAWaitForMultipleEvents(1, &evObj, TRUE, WSA_INFINITE, FALSE);
-		WSAGetOverlappedResult(hSocket, &overlapped, &sendBytes, FALSE, NULL);
-	}
-	else
-	{
-		ErrorHandling("WSASend() error");
-	}
+    evObj = WSACreateEvent();
+    memset(&overlapped, 0, sizeof(overlapped));
+    dataBuf.len = BUF_SIZE;
+    dataBuf.buf = buf;
+
+    if (WSARecv(hRecvSock, &dataBuf, 1, &recvBytes, &flags, &overlapped, callback) == SOCKET_ERROR)
+    {
+        if (WSAGetLastError() == WSA_IO_PENDING)
+        {
+            puts("WSA_IO_PENDING!!");
+            puts("데이터 수신 중... 기다려주세요");
+            puts("");
+        }
+    }
+
+    idx = WSAWaitForMultipleEvents(1, &evObj, FALSE, WSA_INFINITE, TRUE);
+    if (idx == WAIT_IO_COMPLETION)
+        puts("Overlapped I/O Completed");
+    else
+        ErrorHandling("WSARecv() error");
 }
 
-printf("보낸 데이터의 크기: %d \n", sendBytes);
-WSACloseEvent(evObj);
+void CALLBACK callback(DWORD dwError, DWORD RecvBytes, LPWSAOVERLAPPED lpOverlapped, DWORD flags)
+{
+    if (dwError != 0)
+    {
+        ErrorHandling("Callback Error");
+    }
+    else
+    {
+        recvBytes = RecvBytes;
+        printf("받은 메시지: %s\n", buf);
+    }
+}
 ```
-WSARecv함수가 WSASend 함수로 바뀐 점 말고는 대부분 유사합니다.</br></br>
+<div align="center"><strong>Callback 방식을 이용한 방식</strong></div></BR></BR>
+
+callback 방식으로 IO의 완료를 확인할 시, 콜백 할 함수를 생성해주고 어느 시점에 함수를 실행할지 정해줘야합니다.</br>
+<strong>WSAWaitForMultipleEvents</strong>함수는 마지막 인자 값에 TRUE를 넘겨 쓰레드를 alertable wait 상태로 만들어 운영체제가 전달하는 메시지의 수신을 대기하는 상태로 만듭니다.</br>
+해당 함수는 SleepEx함수로도 대체가 가능하며 쓰레드가 alertable wait 상태가 되면 실행흐름에 방해받지 않고 콜백 함수를 호출할 수 있게 됩니다.</br></br>
+
+Event 객체와 다른 점은 OVERLAPPED객체에 따로 이벤트를 지정을 안하며, Event 객체를 생성할 필요가 없습니다.</br>
+위 코드에서 Event 객체는 쓰레드를 alertable wait 상태로 만들기 위해 더미 오브젝트로 만들었으며, SleepEX함수를 사용할 시 Event 객체를 생성할 필요가 없습니다.</br></br>
+
+### 시현 영상
+https://github.com/rakkeshasa/SocketProgramming/assets/77041622/545f22f7-6656-48bc-a316-973c0fd7535f
+
+## IOCP 모델
